@@ -1,0 +1,138 @@
+<script src="https://code.jquery.com/jquery-3.7.1.min.js" integrity="sha256-/JqT3SQfawRcv/BIHPThkBvs0OEvtFFmqPF/lYI/Cxo=" crossorigin="anonymous"></script>
+<script>
+    function message(message) {
+        console.log(message)
+    }
+
+    function findScormTree(win) {
+        return findMainWindow(win).scorm_tree_node;
+    }
+
+    function findMainWindow(win) {
+        let findAPITries = 0;
+        while ((win.parent != null) && (win.parent != win)){
+            findAPITries++;
+
+            if (findAPITries > 7)
+            {
+                message("Error finding main window -- too deeply nested.");
+                return null;
+            }
+            win = win.parent;
+        }
+        return win;
+    }
+
+
+    function isNodeComplete(node) {
+        let i = $(node._htmlNode._node).find('i');
+
+        return i.hasClass('fa-check-square-o') || i.hasClass('fa-check');
+    }
+
+    function isNodeSelected(node) {
+        return node.scoid === findMainWindow(window).scorm_current_node.scoid;
+    }
+
+    function calculateScore() {
+        let slides_cnt = 6;
+        let nodes = findScormTree(window).children;
+        nodes = nodes.concat(nodes[0].children);
+        let slides = nodes.slice(0, slides_cnt);
+        let test = nodes[slides_cnt];
+
+        let total_score = 100;
+        let total_slides_score = 0;
+        let user_score = 0;
+
+        for (let i = 0; i < slides_cnt; i++) {
+            let current_slide_score = 2 ** i;
+            total_slides_score += current_slide_score;
+
+            if (isNodeComplete(slides[i]) || isNodeSelected(slides[i])) {
+                user_score += current_slide_score;
+            }
+        }
+
+        let total_test_score = total_score - total_slides_score;
+
+        if (isNodeComplete(test)
+            || (isNodeSelected(test) && scorm.GetCompletionStatus() === 'completed')
+        ) {
+            user_score += total_test_score;
+        }
+
+        return user_score;
+    }
+
+    function updateScore() {
+        scorm.SetScoreRaw(calculateScore());
+
+        if (scorm.version == '2004') {
+            scorm.SetInteractionValue("cmi.score.scaled", calculateScore()/100);
+        }
+    }
+
+    function setAsPassed() {
+        console.log('passed')
+        scorm.SetCompletionScormActivity("completed");
+        scorm.SetSuccessStatus("passed");
+    }
+
+    $(document).ready(function () {
+        setTimeout(function () {
+            let questionForm = $('input[value="SUBMIT ANSWERS"]').parents('form');
+
+            if (questionForm.length) {
+                findMainWindow(window).hasOpenedTest = true;
+
+                questionForm.submit(function (e) {
+                    computeTime();  // the student has stopped here.
+
+                    document.getElementById("quizForm13").submitB.disabled = true;
+
+                    getAnswer();
+
+                    calcRawScore();
+
+                    actualScore = Math.round(rawScore / numQuestions * 100);
+                    var msg_str ="Вы набрали %d%% правильных ответов. Для прохождения необходимо набрать минимум 50%";
+                    alert(msg_str.replace("%d",actualScore).replace("%%","%"));
+                    scorm.SetScoreMax(100);
+                    scorm.SetScoreMin(0);
+
+                    let isComplete = actualScore < 50;
+                    isComplete ? setAsIncomplete() : setAsPassed();
+
+                    scorm.save();
+                    updateScore();
+                    scorm.save();
+                    exitPageStatus = true;
+                    scorm.SetExit("");
+
+                    scorm.quit();
+
+                    return false;
+                });
+            } else {
+                setAsPassed();
+                updateScore();
+                scorm.save();
+                scorm.quit();
+            }
+        }, 500);
+    });
+
+    function setAsIncomplete() {
+        console.log('failed')
+        scorm.SetCompletionScormActivity("incomplete");
+        scorm.SetSuccessStatus("failed");
+        if (scorm.version == '2004') {
+            scorm.SetInteractionValue("cmi.score.scaled", calculateScore()/100);
+        }
+    }
+
+    function calcScore2() {
+        // prevent firing
+    }
+</script>
